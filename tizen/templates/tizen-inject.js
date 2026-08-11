@@ -64,18 +64,11 @@
         if (e.keyCode !== KEY_BACK) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        // With a filter open, back should close it -- jumping out to the
-        // sidebar and leaving it hanging open is what it did before.
-        var dd = openDropdown();
-        if (dd) {
-            var menu = dd.closest('[class*="multiselect-menu"]');
-            var button = menu ? menu.querySelector('[class*="multiselect-button"]') : null;
-            if (button) {
-                button.click();
-                try { button.focus(); } catch (ex) {}
-                return;
-            }
-        }
+        // With a filter or the account menu open, back should close it --
+        // jumping out to the sidebar and leaving it hanging open is what it did
+        // before, and the account menu had no way out at all.
+        var overlay = openOverlay();
+        if (overlay && closeOverlay(overlay)) return;
         var inSidebar = document.activeElement &&
             document.activeElement.closest &&
             document.activeElement.closest('[class*="nav-tab-button"]');
@@ -239,30 +232,69 @@
     // below then takes over and walks the catalog, so the filter can never be
     // navigated and just sits there open. Drive the options explicitly, and
     // make the row jump stand down while a dropdown is open.
-    function openDropdown() {
-        var dds = document.querySelectorAll('[class*="multiselect-menu"] [class*="dropdown"]');
-        for (var i = 0; i < dds.length; i++) {
-            var r = dds[i].getBoundingClientRect();
-            if (r.width > 0 && r.height > 0) return dds[i];
+    // Covers both popups that behave this way: the Discover filter dropdowns
+    // and the account menu. The account menu is worse -- it sits at z-index 1
+    // over the catalog, so tiles behind it stay perfectly good navigation
+    // candidates and it could be opened but never entered or dismissed.
+    var OVERLAY_SEL = '[class*="multiselect-menu"] [class*="dropdown"], [class*="menu-container"]';
+
+    function openOverlay() {
+        var els = document.querySelectorAll(OVERLAY_SEL);
+        // Document order, so the outermost container comes first.
+        for (var i = 0; i < els.length; i++) {
+            var r = els[i].getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) return els[i];
         }
         return null;
     }
 
-    document.addEventListener('keydown', function(e) {
-        if (e.keyCode !== 38 && e.keyCode !== 40) return;
-        var dd = openDropdown();
-        if (!dd) return;
-        var opts = Array.prototype.filter.call(dd.querySelectorAll('[class*="option-"]'), function(el) {
+    // Both menus mark their items tabindex="0", so one rule serves both rather
+    // than needing a selector per menu type.
+    function overlayOptions(overlay) {
+        return Array.prototype.filter.call(overlay.querySelectorAll('[tabindex="0"]'), function(el) {
             var r = el.getBoundingClientRect();
             return r.width > 0 && r.height > 0;
         });
+    }
+
+    function closeOverlay(overlay) {
+        var multiselect = overlay.closest('[class*="multiselect-menu"]');
+        if (multiselect) {
+            var button = multiselect.querySelector('[class*="multiselect-button"]');
+            if (button) {
+                button.click();
+                try { button.focus(); } catch (ex) {}
+                return true;
+            }
+        }
+        // The account menu is a child of the control that toggles it, so walk
+        // out to the nearest focusable ancestor and click that.
+        var toggle = overlay.parentElement;
+        while (toggle && !(toggle.getAttribute && toggle.getAttribute('tabindex') === '0')) {
+            toggle = toggle.parentElement;
+        }
+        if (toggle) {
+            toggle.click();
+            try { toggle.focus(); } catch (ex) {}
+            return true;
+        }
+        return false;
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode !== 38 && e.keyCode !== 40) return;
+        var overlay = openOverlay();
+        if (!overlay) return;
+        var opts = overlayOptions(overlay);
         if (!opts.length) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        var current = document.activeElement && document.activeElement.closest ?
-            document.activeElement.closest('[class*="option-"]') : null;
-        var i = current ? opts.indexOf(current) : -1;
-        // Focus may still be on the button that opened it, so the first press
+        var active = document.activeElement;
+        var i = -1;
+        for (var n = 0; n < opts.length; n++) {
+            if (opts[n] === active || opts[n].contains(active)) { i = n; break; }
+        }
+        // Focus may still be on the control that opened it, so the first press
         // should land on the first option rather than stepping past it.
         var next = (i < 0) ? opts[0] :
             opts[Math.min(Math.max(i + (e.keyCode === 40 ? 1 : -1), 0), opts.length - 1)];
@@ -273,7 +305,7 @@
 
     document.addEventListener('keydown', function(e) {
         if (e.keyCode !== 38 && e.keyCode !== 40) return;
-        if (openDropdown()) return;   // the handler above owns this case
+        if (openOverlay()) return;   // the handler above owns this case
         var active = document.activeElement;
         if (!active || !active.closest) return;
         var item = active.closest(TILE);
@@ -335,11 +367,15 @@
     }
 
     setInterval(function() {
-        var isOpen = !!openDropdown();
+        var overlay = openOverlay();
+        var isOpen = !!overlay;
+        // Only a filter closing should send focus to the results. Closing the
+        // account menu shouldn't yank you off to the first tile.
+        var isFilter = isOpen && !!overlay.closest('[class*="multiselect-menu"]');
         if (dropdownWasOpen && !isOpen) {
             armResultsFocus();
         }
-        dropdownWasOpen = isOpen;
+        dropdownWasOpen = isFilter;
 
         if (!focusResultsUntil || isOpen) return;
         if (Date.now() > focusResultsUntil) { focusResultsUntil = 0; return; }
