@@ -303,6 +303,23 @@
         next.scrollIntoView({ block: 'nearest' });
     }, true);
 
+    // Down out of a text field goes to the first result. Search deliberately
+    // keeps focus in the input (you land there ready to type, and the focus
+    // helper below refuses to steal from a text field), so without this there
+    // is no clean way into the results at all.
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode !== 40) return;
+        var field = document.activeElement;
+        if (!field || (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA')) return;
+        var first = firstResult();
+        if (!first) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        first.setAttribute('tabindex', '0');
+        try { first.focus(); } catch (ex) {}
+        first.scrollIntoView({ block: 'center' });
+    }, true);
+
     document.addEventListener('keydown', function(e) {
         if (e.keyCode !== 38 && e.keyCode !== 40) return;
         if (openOverlay()) return;   // the handler above owns this case
@@ -368,6 +385,26 @@
         armResultsFocus();
     });
 
+    // Addons has no tile grid at all -- its rows are the results, and they are
+    // already focusable. Search does use tiles, so it needs nothing extra
+    // beyond the text-field guard below.
+    var ADDON_ROW = '[class*="addon-"][tabindex="0"]';
+    var RESULT_SEL = TILE + ',' + ADDON_ROW;
+
+    function firstResult() {
+        var grid = largestTileGrid();
+        if (grid) {
+            var tiles = visibleTilesIn(grid);
+            if (tiles.length) return tiles[0];
+        }
+        var rows = document.querySelectorAll(ADDON_ROW);
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i].getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) return rows[i];
+        }
+        return null;
+    }
+
     function largestTileGrid() {
         // Routes leave earlier containers mounted at zero size, and the catalog
         // is not always the first match -- pick whichever actually holds the
@@ -396,16 +433,21 @@
         if (Date.now() > focusResultsUntil) { focusResultsUntil = 0; return; }
 
         var active = document.activeElement;
-        if (active && active.closest && active.closest(TILE)) {
+        // Never pull focus out of a text field. Searching updates the query in
+        // the hash on every keystroke, which arms this -- without the guard it
+        // would drag the user out of the search box and into the results
+        // mid-word.
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+            return;
+        }
+        if (active && active.closest && active.closest(RESULT_SEL)) {
             focusResultsUntil = 0;      // it stuck
             return;
         }
-        var grid = largestTileGrid();
-        if (!grid) return;
-        var tiles = visibleTilesIn(grid);
-        if (!tiles.length) return;
-        tiles[0].setAttribute('tabindex', '0');
-        try { tiles[0].focus(); } catch (ex) {}
+        var target = firstResult();
+        if (!target) return;
+        target.setAttribute('tabindex', '0');
+        try { target.focus(); } catch (ex) {}
     }, 250);
 
     // ── Put focus on the stream list, like the Samsung app does ─────────
