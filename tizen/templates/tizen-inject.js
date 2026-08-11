@@ -156,7 +156,12 @@
     // on Discover while looking fine on the home screen.
     var UI_SCALE_CSS = [
         'html{font-size:20px !important}',
-        '[class*="board-row"] [class*="meta-items-container"] > [class*="meta-item"]:nth-child(n+7){display:none !important}',
+        // Search uses the same fixed-count flex carousel as the home board, but
+        // under "search-row" rather than "board-row", so it needs naming too or
+        // it keeps the stock 9-per-row while everything else is 6.
+        '[class*="board-row"] [class*="meta-items-container"] > [class*="meta-item"]:nth-child(n+7),' +
+        '[class*="search-row"] [class*="meta-items-container"] > [class*="meta-item"]:nth-child(n+7)' +
+        '{display:none !important}',
         '[class*="meta-items-container"]{grid-template-columns:repeat(6,1fr) !important}',
         // Discover's grid sits in a narrower column because of the side panel,
         // so 6 there would be noticeably smaller than everywhere else.
@@ -197,12 +202,17 @@
         });
     }
 
+    // Home board and Search both lay results out as one flex carousel per row.
+    // Search must be included here as well as in the CSS above: without it the
+    // grid branch below runs on a flex container, computes a single column and
+    // steps one tile at a time instead of a whole row.
+    var CAROUSEL_ROW = '[class*="board-row"],[class*="search-row"]';
+
     function rowNeighbour(item, down) {
-        // Home board: each row is its own flex container, so step board-rows.
-        var row = item.closest('[class*="board-row"]');
+        var row = item.closest(CAROUSEL_ROW);
         if (row) {
             var rows = Array.prototype.filter.call(
-                document.querySelectorAll('[class*="board-row"]'),
+                document.querySelectorAll(CAROUSEL_ROW),
                 function(el) {
                     var r = el.getBoundingClientRect();
                     return r.width > 0 && r.height > 0;
