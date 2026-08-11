@@ -1,0 +1,23 @@
+diff --git a/src/common/Platform/device.ts b/src/common/Platform/device.ts
+index d80e011..4df35ca 100644
+--- a/src/common/Platform/device.ts
++++ b/src/common/Platform/device.ts
+@@ -30,7 +30,17 @@ const isIOS = !isVisionOS && (
+ const bowser = Bowser.getParser(userAgent);
+ const os = bowser.getOSName().toLowerCase();
+ 
+-const name = isVisionOS ? 'visionos' : isIOS ? 'ios' : os || 'unknown';
++// stremio-video picks its player implementation by exact-matching this name
++// against 'Tizen' / 'webOS' / 'Titan' / 'NetTV' / 'Vidaa'. Lowercasing here
++// means none of those comparisons can ever match, so every TV silently falls
++// back to the HTML5 <video> element and cannot play the containers and codecs
++// the native player handles - on Tizen a debrid MKV fails with "Video is not
++// supported". Keep the original casing for the TV platforms; the lowercase
++// form is still used everywhere else, and isMobile below is unaffected.
++const TV_PLATFORMS = ['Tizen', 'webOS', 'Titan', 'NetTV', 'Vidaa'];
++const tvName = TV_PLATFORMS.find((tv: string) => tv.toLowerCase() === os);
++
++const name = isVisionOS ? 'visionos' : isIOS ? 'ios' : tvName || os || 'unknown';
+ const isMobile = ['ios', 'android'].includes(name);
+ 
+ export {
