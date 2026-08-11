@@ -64,6 +64,18 @@
         if (e.keyCode !== KEY_BACK) return;
         e.preventDefault();
         e.stopImmediatePropagation();
+        // With a filter open, back should close it -- jumping out to the
+        // sidebar and leaving it hanging open is what it did before.
+        var dd = openDropdown();
+        if (dd) {
+            var menu = dd.closest('[class*="multiselect-menu"]');
+            var button = menu ? menu.querySelector('[class*="multiselect-button"]') : null;
+            if (button) {
+                button.click();
+                try { button.focus(); } catch (ex) {}
+                return;
+            }
+        }
         var inSidebar = document.activeElement &&
             document.activeElement.closest &&
             document.activeElement.closest('[class*="nav-tab-button"]');
@@ -220,8 +232,48 @@
         return (target >= 0 && target < tiles.length) ? tiles[target] : null;
     }
 
+    // ── Keep up/down inside an open filter dropdown ─────────────────────
+    // The Discover filter dropdowns are position:absolute and overlap the
+    // catalog behind them, so WebKit's spatial navigation picks a TILE showing
+    // through the dropdown rather than an option in it. The row-jump handler
+    // below then takes over and walks the catalog, so the filter can never be
+    // navigated and just sits there open. Drive the options explicitly, and
+    // make the row jump stand down while a dropdown is open.
+    function openDropdown() {
+        var dds = document.querySelectorAll('[class*="multiselect-menu"] [class*="dropdown"]');
+        for (var i = 0; i < dds.length; i++) {
+            var r = dds[i].getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) return dds[i];
+        }
+        return null;
+    }
+
     document.addEventListener('keydown', function(e) {
         if (e.keyCode !== 38 && e.keyCode !== 40) return;
+        var dd = openDropdown();
+        if (!dd) return;
+        var opts = Array.prototype.filter.call(dd.querySelectorAll('[class*="option-"]'), function(el) {
+            var r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        });
+        if (!opts.length) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        var current = document.activeElement && document.activeElement.closest ?
+            document.activeElement.closest('[class*="option-"]') : null;
+        var i = current ? opts.indexOf(current) : -1;
+        // Focus may still be on the button that opened it, so the first press
+        // should land on the first option rather than stepping past it.
+        var next = (i < 0) ? opts[0] :
+            opts[Math.min(Math.max(i + (e.keyCode === 40 ? 1 : -1), 0), opts.length - 1)];
+        next.setAttribute('tabindex', '0');
+        try { next.focus(); } catch (ex) {}
+        next.scrollIntoView({ block: 'nearest' });
+    }, true);
+
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode !== 38 && e.keyCode !== 40) return;
+        if (openDropdown()) return;   // the handler above owns this case
         var active = document.activeElement;
         if (!active || !active.closest) return;
         var item = active.closest(TILE);
@@ -235,6 +287,30 @@
         try { target.focus(); } catch (ex) {}
         target.scrollIntoView({ block: 'center' });
     }, true);
+
+    // After a filter closes, put focus on the first result rather than leaving
+    // it on the filter row -- otherwise choosing a genre means pressing right
+    // twice and down again before you can pick anything.
+    var dropdownWasOpen = false;
+    setInterval(function() {
+        var isOpen = !!openDropdown();
+        if (dropdownWasOpen && !isOpen) {
+            var grid = null;
+            var conts = document.querySelectorAll('[class*="meta-items-container"]');
+            for (var i = 0; i < conts.length; i++) {
+                var r = conts[i].getBoundingClientRect();
+                if (r.width > 200 && r.height > 200) { grid = conts[i]; break; }
+            }
+            if (grid) {
+                var tiles = visibleTilesIn(grid);
+                if (tiles.length) {
+                    tiles[0].setAttribute('tabindex', '0');
+                    try { tiles[0].focus(); } catch (ex) {}
+                }
+            }
+        }
+        dropdownWasOpen = isOpen;
+    }, 300);
 
     // ── Put focus on the stream list, like the Samsung app does ─────────
     // Opening a title leaves focus wherever it was, so reaching the streams
