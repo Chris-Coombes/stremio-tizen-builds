@@ -120,12 +120,25 @@
         for (var i = 0; i < els.length; i++) {
             var el = els[i];
             if (el.getAttribute('tabindex') !== '-1') continue;
-            // Skip candidates nested inside another candidate. The selectors are
-            // substring matches, so "label-container" also catches the
-            // "menu-label-container" inside every meta-item tile; promoting both
-            // would put a second focus stop inside each tile and make crossing a
-            // row of films take two presses per film.
-            if (el.parentElement && el.parentElement.closest(NAV_SEL)) continue;
+            // Skip candidates nested inside something that is ALREADY focusable,
+            // or that we are about to make focusable. Nested focusables mean two
+            // stops for one control -- "menu-label-container" sits inside every
+            // meta-item tile, and promoting both made crossing a row of films
+            // take two presses per film.
+            //
+            // Test the ancestor's tabindex, not just whether it matches NAV_SEL.
+            // These are substring selectors, so a plain layout container catches
+            // them by coincidence -- "control-bar-buttonS-container" contains
+            // "control-bar-button" -- and matching on the selector alone made
+            // this guard skip every button inside it, so promotion ran and did
+            // nothing at all. A container like that carries no tabindex, so it
+            // was never a candidate and must not block its children.
+            var ancestor = el.parentElement ?
+                el.parentElement.closest('[tabindex="0"],' + NAV_SEL) : null;
+            if (ancestor) {
+                var ancestorIndex = ancestor.getAttribute('tabindex');
+                if (ancestorIndex === '0' || ancestorIndex === '-1') continue;
+            }
             var r = el.getBoundingClientRect();
             if (r.width > 0 && r.height > 0) el.setAttribute('tabindex', '0');
         }
