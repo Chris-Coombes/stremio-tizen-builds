@@ -302,6 +302,25 @@
     var dropdownWasOpen = false;
     var focusResultsUntil = 0;
 
+    function armResultsFocus() {
+        focusResultsUntil = Date.now() + FOCUS_RESULTS_WINDOW_MS;
+    }
+
+    // Switching section from the sidebar has the same problem as filtering:
+    // the new page renders with nothing focused, so it takes several presses
+    // to get to the first title. Arm the same retry on route changes.
+    //
+    // Detail and player are excluded deliberately. Detail has its own focus
+    // rule for the stream list, and both would otherwise be fought over.
+    window.addEventListener('hashchange', function() {
+        var hash = location.hash || '';
+        if (hash.indexOf('#/detail') === 0 || hash.indexOf('#/player') === 0) {
+            focusResultsUntil = 0;
+            return;
+        }
+        armResultsFocus();
+    });
+
     function largestTileGrid() {
         // Routes leave earlier containers mounted at zero size, and the catalog
         // is not always the first match -- pick whichever actually holds the
@@ -318,7 +337,7 @@
     setInterval(function() {
         var isOpen = !!openDropdown();
         if (dropdownWasOpen && !isOpen) {
-            focusResultsUntil = Date.now() + FOCUS_RESULTS_WINDOW_MS;
+            armResultsFocus();
         }
         dropdownWasOpen = isOpen;
 
