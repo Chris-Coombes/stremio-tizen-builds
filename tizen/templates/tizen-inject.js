@@ -291,26 +291,52 @@
     // After a filter closes, put focus on the first result rather than leaving
     // it on the filter row -- otherwise choosing a genre means pressing right
     // twice and down again before you can pick anything.
+    //
+    // This has to RETRY rather than fire once on the close. Applying a filter
+    // re-renders the catalog immediately afterwards, which destroys whatever
+    // was focused; a single attempt on the open->closed edge lands focus and
+    // then loses it to BODY a few hundred ms later, which looks exactly like
+    // the fix not working at all. Keep trying until focus is actually sitting
+    // on a tile, then stand down.
+    var FOCUS_RESULTS_WINDOW_MS = 5000;
     var dropdownWasOpen = false;
+    var focusResultsUntil = 0;
+
+    function largestTileGrid() {
+        // Routes leave earlier containers mounted at zero size, and the catalog
+        // is not always the first match -- pick whichever actually holds the
+        // most visible tiles.
+        var conts = document.querySelectorAll('[class*="meta-items-container"]');
+        var best = null, bestCount = 0;
+        for (var i = 0; i < conts.length; i++) {
+            var count = visibleTilesIn(conts[i]).length;
+            if (count > bestCount) { bestCount = count; best = conts[i]; }
+        }
+        return best;
+    }
+
     setInterval(function() {
         var isOpen = !!openDropdown();
         if (dropdownWasOpen && !isOpen) {
-            var grid = null;
-            var conts = document.querySelectorAll('[class*="meta-items-container"]');
-            for (var i = 0; i < conts.length; i++) {
-                var r = conts[i].getBoundingClientRect();
-                if (r.width > 200 && r.height > 200) { grid = conts[i]; break; }
-            }
-            if (grid) {
-                var tiles = visibleTilesIn(grid);
-                if (tiles.length) {
-                    tiles[0].setAttribute('tabindex', '0');
-                    try { tiles[0].focus(); } catch (ex) {}
-                }
-            }
+            focusResultsUntil = Date.now() + FOCUS_RESULTS_WINDOW_MS;
         }
         dropdownWasOpen = isOpen;
-    }, 300);
+
+        if (!focusResultsUntil || isOpen) return;
+        if (Date.now() > focusResultsUntil) { focusResultsUntil = 0; return; }
+
+        var active = document.activeElement;
+        if (active && active.closest && active.closest(TILE)) {
+            focusResultsUntil = 0;      // it stuck
+            return;
+        }
+        var grid = largestTileGrid();
+        if (!grid) return;
+        var tiles = visibleTilesIn(grid);
+        if (!tiles.length) return;
+        tiles[0].setAttribute('tabindex', '0');
+        try { tiles[0].focus(); } catch (ex) {}
+    }, 250);
 
     // ── Put focus on the stream list, like the Samsung app does ─────────
     // Opening a title leaves focus wherever it was, so reaching the streams
