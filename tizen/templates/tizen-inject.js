@@ -33,31 +33,52 @@
         if (e.keyCode === KEY_EXIT) {
             e.preventDefault();
             try { tizen.application.getCurrentApplication().exit(); } catch(ex) {}
-        } else if (e.keyCode === KEY_BACK) {
-            // Was declared but never handled, so the back key did nothing at all.
-            // Samsung's own Stremio app uses back as "jump to the sidebar" rather
-            // than as a history control, so that you don't have to walk left
-            // across a whole row of tiles to change section. Match that: back
-            // from the content area focuses the sidebar, back from the sidebar
-            // goes back in history.
-            e.preventDefault();
-            var inSidebar = document.activeElement &&
-                document.activeElement.closest &&
-                document.activeElement.closest('[class*="nav-tab-button"]');
-            if (!inSidebar) {
-                var tab = document.querySelector('[class*="nav-tab-button"].selected') ||
-                          document.querySelector('[class*="nav-tab-button"]');
-                if (tab) {
-                    tab.setAttribute('tabindex', '0');
-                    try { tab.focus(); } catch (ex) {}
-                    return;
-                }
-            }
-            if (location.hash && location.hash !== '#/') {
-                history.back();
-            }
         }
     });
+
+    // Back was declared above and then never handled, so the key did nothing at
+    // all. Samsung's own Stremio app uses back as "jump to the sidebar" rather
+    // than as a history control, so that you don't have to walk left across a
+    // whole row of tiles just to change section. Match that: back from the
+    // content area focuses the sidebar, back from the sidebar goes back in
+    // history.
+    //
+    // Registered at CAPTURE phase, and stopping dispatch outright: stremio-web
+    // components bind their own keydown handlers (the player in particular), and
+    // at bubble phase this never runs if one of them stops propagation first.
+    function visibleSidebarTab() {
+        var tabs = document.querySelectorAll('[class*="nav-tab-button"]');
+        var selected = null;
+        for (var i = 0; i < tabs.length; i++) {
+            var r = tabs[i].getBoundingClientRect();
+            // The player route keeps nav tabs in the DOM but hidden. Focusing one
+            // of those would silently do nothing and read as a dead back button.
+            if (r.width === 0 || r.height === 0) continue;
+            if (!selected) selected = tabs[i];
+            if (/\bselected\b/.test(tabs[i].className)) return tabs[i];
+        }
+        return selected;
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode !== KEY_BACK) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        var inSidebar = document.activeElement &&
+            document.activeElement.closest &&
+            document.activeElement.closest('[class*="nav-tab-button"]');
+        if (!inSidebar) {
+            var tab = visibleSidebarTab();
+            if (tab) {
+                tab.setAttribute('tabindex', '0');
+                try { tab.focus(); } catch (ex) {}
+                return;
+            }
+        }
+        if (location.hash && location.hash !== '#/') {
+            history.back();
+        }
+    }, true);
 
     // ── Make the chrome reachable by the remote ─────────────────────────
     // Tizen's WebKit spatial navigation only moves focus between elements it
