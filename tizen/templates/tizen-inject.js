@@ -33,7 +33,76 @@
         if (e.keyCode === KEY_EXIT) {
             e.preventDefault();
             try { tizen.application.getCurrentApplication().exit(); } catch(ex) {}
+        } else if (e.keyCode === KEY_BACK) {
+            // Was declared but never handled, so the back key did nothing at all.
+            // Samsung's own Stremio app uses back as "jump to the sidebar" rather
+            // than as a history control, so that you don't have to walk left
+            // across a whole row of tiles to change section. Match that: back
+            // from the content area focuses the sidebar, back from the sidebar
+            // goes back in history.
+            e.preventDefault();
+            var inSidebar = document.activeElement &&
+                document.activeElement.closest &&
+                document.activeElement.closest('[class*="nav-tab-button"]');
+            if (!inSidebar) {
+                var tab = document.querySelector('[class*="nav-tab-button"].selected') ||
+                          document.querySelector('[class*="nav-tab-button"]');
+                if (tab) {
+                    tab.setAttribute('tabindex', '0');
+                    try { tab.focus(); } catch (ex) {}
+                    return;
+                }
+            }
+            if (location.hash && location.hash !== '#/') {
+                history.back();
+            }
         }
+    });
+
+    // ── Make the chrome reachable by the remote ─────────────────────────
+    // Tizen's WebKit spatial navigation only moves focus between elements it
+    // considers focusable. stremio-web ships its sidebar tabs, top bar buttons
+    // and "see all" links with tabindex="-1" (they are mouse targets on
+    // desktop), so on a TV the remote can only ever reach the content grid —
+    // the sidebar and top bar are unreachable. Promote them to tabindex="0".
+    //
+    // Done on each arrow press rather than via MutationObserver: stremio-web
+    // re-renders constantly, and this way the pass is both always current and
+    // only paid for when someone is actually navigating.
+    var NAV_SEL = [
+        '[class*="nav-tab-button"]',
+        '[class*="button-container"]',
+        '[class*="see-all-container"]',
+        '[class*="label-container"]'
+    ].join(',');
+
+    function promoteNavTargets() {
+        var els = document.querySelectorAll(NAV_SEL);
+        for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            if (el.getAttribute('tabindex') !== '-1') continue;
+            // Skip candidates nested inside another candidate. The selectors are
+            // substring matches, so "label-container" also catches the
+            // "menu-label-container" inside every meta-item tile; promoting both
+            // would put a second focus stop inside each tile and make crossing a
+            // row of films take two presses per film.
+            if (el.parentElement && el.parentElement.closest(NAV_SEL)) continue;
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) el.setAttribute('tabindex', '0');
+        }
+    }
+
+    document.addEventListener('keydown', function(e) {
+        // 37 left, 38 up, 39 right, 40 down
+        if (e.keyCode >= 37 && e.keyCode <= 40) promoteNavTargets();
+    }, true);
+
+    // Also promote proactively on load and on each route change, so the very
+    // first arrow press after navigating somewhere new doesn't have to rely on
+    // the promotion landing before the browser picks its focus candidate.
+    document.addEventListener('DOMContentLoaded', promoteNavTargets);
+    window.addEventListener('hashchange', function() {
+        setTimeout(promoteNavTargets, 0);
     });
 
     // ── Visibility change (TV sleep / wake) ─────────────────────────────
