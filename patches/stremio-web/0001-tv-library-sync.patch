@@ -1,0 +1,55 @@
+diff --git a/src/App/App.js b/src/App/App.js
+index 7a1383d..bccd7a3 100644
+--- a/src/App/App.js
++++ b/src/App/App.js
+@@ -185,9 +185,39 @@ const App = () => {
+                 }
+             });
+         };
++        // [tv-library-sync] On TV (Tizen/webOS) the app is the only window and never
++        // loses/regains focus, so the 'focus' listener below fires once at mount and
++        // never again - the library is then only ever pulled at app launch, and a
++        // title added on another device does not appear until the app is restarted.
++        // visibilitychange covers suspend/resume; the interval covers the normal TV
++        // case of leaving the app open indefinitely.
++        // Deliberately NOT calling onWindowFocus() on the interval - that also
++        // dispatches PullNotifications, which issues requests to every addon.
++        const syncLibraryOnly = () => {
++            console.log('[tv-library-sync] SyncLibraryWithAPI');
++            services.core.transport.dispatch({
++                action: 'Ctx',
++                args: {
++                    action: 'SyncLibraryWithAPI'
++                }
++            });
++        };
++        const onVisibilityChange = () => {
++            if (document.visibilityState === 'visible') {
++                console.log('[tv-library-sync] visible -> full sync');
++                onWindowFocus();
++            }
++        };
++        let syncIntervalId = null;
+         if (services.core.active) {
+             onWindowFocus();
+             window.addEventListener('focus', onWindowFocus);
++            document.addEventListener('visibilitychange', onVisibilityChange);
++            syncIntervalId = setInterval(() => {
++                if (document.visibilityState !== 'hidden') {
++                    syncLibraryOnly();
++                }
++            }, 120000);
+             services.core.transport.on('CoreEvent', onCoreEvent);
+             services.core.transport
+                 .getState('ctx')
+@@ -195,6 +225,10 @@ const App = () => {
+                 .catch(console.error);
+         }
+         return () => {
++            if (syncIntervalId !== null) {
++                clearInterval(syncIntervalId);
++            }
++            document.removeEventListener('visibilitychange', onVisibilityChange);
+             if (services.core.active) {
+                 window.removeEventListener('focus', onWindowFocus);
+                 services.core.transport.off('CoreEvent', onCoreEvent);
