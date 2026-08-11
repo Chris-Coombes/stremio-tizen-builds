@@ -334,9 +334,24 @@
     var dropdownWasOpen = false;
     var focusResultsUntil = 0;
 
-    function armResultsFocus() {
-        focusResultsUntil = Date.now() + FOCUS_RESULTS_WINDOW_MS;
+    // Cold start needs a much longer window than a route change: the app has to
+    // come up and the catalogs have to answer before there is anything to focus.
+    var FOCUS_RESULTS_STARTUP_MS = 45000;
+
+    function armResultsFocus(ms) {
+        focusResultsUntil = Date.now() + (ms || FOCUS_RESULTS_WINDOW_MS);
     }
+
+    // No hashchange fires on a cold start, so nothing armed the retry and the
+    // home page came up with nothing focused.
+    armResultsFocus(FOCUS_RESULTS_STARTUP_MS);
+
+    // Any keypress means the user is driving, so stop trying to place focus.
+    // Without this the long startup window would yank focus back to a tile
+    // while they were part-way into the sidebar waiting for catalogs to load.
+    document.addEventListener('keydown', function() {
+        focusResultsUntil = 0;
+    }, true);
 
     // Switching section from the sidebar has the same problem as filtering:
     // the new page renders with nothing focused, so it takes several presses
