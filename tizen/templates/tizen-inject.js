@@ -99,7 +99,20 @@
         '[class*="nav-tab-button"]',
         '[class*="button-container"]',
         '[class*="see-all-container"]',
-        '[class*="label-container"]'
+        '[class*="label-container"]',
+        // The player's control bar -- play/pause, seek, subtitles, audio track,
+        // fullscreen. All shipped tabindex="-1", so with a remote the entire
+        // control bar was unreachable while something was playing. The class is
+        // "control-bar-button", which none of the patterns above match.
+        //
+        // The :not() is load-bearing. "control-bar-buttonS-container" contains
+        // "control-bar-button" as a substring, so without it the selector also
+        // matches the parent, and the nesting guard below then skips every
+        // button inside it -- promotion silently does nothing. This is the same
+        // plural trap as meta-item/meta-items-container and
+        // label-container/menu-label-container. Check for it whenever adding a
+        // [class*=] pattern here.
+        '[class*="control-bar-button"]:not([class*="control-bar-buttons"])'
     ].join(',');
 
     function promoteNavTargets() {
@@ -411,6 +424,18 @@
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i].getBoundingClientRect();
             if (r.width > 0 && r.height > 0) return rows[i];
+        }
+        // Pages with neither tiles nor addon rows -- Settings being the one that
+        // matters -- still came up with nothing focused, so the first press went
+        // somewhere arbitrary in the top bar. Fall back to the first focusable
+        // thing in the content area: past the sidebar on the left (x) and below
+        // the top bar (y), so neither of those wins by being first in the DOM.
+        var focusable = document.querySelectorAll('[tabindex="0"]');
+        for (var n = 0; n < focusable.length; n++) {
+            var box = focusable[n].getBoundingClientRect();
+            if (box.width > 0 && box.height > 0 && box.x > 100 && box.y > 100) {
+                return focusable[n];
+            }
         }
         return null;
     }
