@@ -169,6 +169,73 @@
         else document.addEventListener('DOMContentLoaded', attach);
     })();
 
+    // ── Jump a whole row on up/down, instead of scrolling toward one ────
+    // WebKit's spatial navigation scrolls toward an off-screen candidate rather
+    // than jumping to it, so with TV-sized tiles the next row is usually out of
+    // view and each press only nudges the page -- it takes several to actually
+    // change row. Handle up/down on tiles ourselves: move to the same column in
+    // the adjacent row and let the page follow the focus.
+    //
+    // Only tiles are intercepted. Anywhere else (the stream list, settings, the
+    // sidebar) falls through to the native behaviour, which is fine there
+    // because those are single columns of short rows.
+    //
+    // Note the ":not([class*=meta-items])" -- "meta-item" is a substring of
+    // "meta-items-container", so the loose selector matches the row container
+    // itself and focus lands on the whole row.
+    var TILE = '[class*="meta-item-"]:not([class*="meta-items"])';
+
+    function visibleTilesIn(root) {
+        return Array.prototype.filter.call(root.querySelectorAll(TILE), function(el) {
+            var r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        });
+    }
+
+    function rowNeighbour(item, down) {
+        // Home board: each row is its own flex container, so step board-rows.
+        var row = item.closest('[class*="board-row"]');
+        if (row) {
+            var rows = Array.prototype.filter.call(
+                document.querySelectorAll('[class*="board-row"]'),
+                function(el) {
+                    var r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                });
+            var next = rows[rows.indexOf(row) + (down ? 1 : -1)];
+            if (!next) return null;
+            var col = visibleTilesIn(row).indexOf(item);
+            var into = visibleTilesIn(next);
+            if (!into.length) return null;
+            // Rows hold different numbers of items; clamp to the last one.
+            return into[Math.min(Math.max(col, 0), into.length - 1)];
+        }
+        // Library / Discover: one grid, so a row is the column count.
+        var grid = item.closest('[class*="meta-items-container"]');
+        if (!grid) return null;
+        var tiles = visibleTilesIn(grid);
+        var cols = (getComputedStyle(grid).gridTemplateColumns || '').split(' ')
+            .filter(Boolean).length || 1;
+        var target = tiles.indexOf(item) + (down ? cols : -cols);
+        return (target >= 0 && target < tiles.length) ? tiles[target] : null;
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode !== 38 && e.keyCode !== 40) return;
+        var active = document.activeElement;
+        if (!active || !active.closest) return;
+        var item = active.closest(TILE);
+        if (!item) return;
+        var target = rowNeighbour(item, e.keyCode === 40);
+        if (!target) return;
+        // Stop the native handler too, or it scrolls on top of our jump.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        target.setAttribute('tabindex', '0');
+        try { target.focus(); } catch (ex) {}
+        target.scrollIntoView({ block: 'center' });
+    }, true);
+
     // ── Put focus on the stream list, like the Samsung app does ─────────
     // Opening a title leaves focus wherever it was, so reaching the streams
     // meant right, right, down every single time; and picking a provider from
