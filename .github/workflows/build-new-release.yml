@@ -144,6 +144,23 @@ jobs:
           path: 'stremio-web'
           ref: ${{ matrix.tag }}
 
+      - name: Apply patches to stremio-web
+        if: ${{ matrix.source_build == true }}
+        run: |
+          shopt -s nullglob
+          patches=(patches/stremio-web/*.patch)
+          if [ ${#patches[@]} -eq 0 ]; then
+            echo "No patches to apply."
+            exit 0
+          fi
+          cd stremio-web
+          for patch in "${patches[@]}"; do
+            echo "Applying $(basename "$patch")"
+            # Hard failure on purpose: a silently skipped patch produces a green
+            # build that is byte-identical to an unpatched one.
+            git apply --verbose "../$patch"
+          done
+
       - name: Build stremio-web
         if: ${{ matrix.source_build == true }}
         run: |
@@ -184,15 +201,9 @@ jobs:
             fi
           fi
 
-          # Apply patches if any exist
-          if [ -d "patches/stremio-web" ]; then
-            for patch in patches/stremio-web/*.patch; do
-              [ -f "$patch" ] || continue
-              echo "Applying patch: $(basename "$patch")"
-              cd stremio-web && git apply "../$patch" || echo "Patch failed: $(basename "$patch")"
-              cd ..
-            done
-          fi
+          # Patches are applied before the build now - see the "Apply patches to
+          # stremio-web" step. Applying them here was a no-op: this step runs after
+          # the bundle is built and copied, so nothing was ever rebuilt from them.
 
       - name: Prepare Tizen app directory (wrapper build)
         if: ${{ matrix.source_build == false }}
