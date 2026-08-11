@@ -126,6 +126,49 @@
         setTimeout(promoteNavTargets, 0);
     });
 
+    // ── Size the UI for a TV rather than a desktop monitor ──────────────
+    // stremio-web has no UI scale setting. Two separate things make it small on
+    // a 1080p TV, and they need different fixes:
+    //
+    // 1. Root font size comes from width breakpoints (18px above 2800px, 16px
+    //    to 2800, 15px to 2200, 14px to 1600). A 1920-wide TV lands on 15px --
+    //    sized for a monitor at arm's length. Everything else is rem (1470 rem
+    //    values against 186 px in the stylesheet), so one override scales the
+    //    lot.
+    //
+    // 2. Tile size does NOT follow the font. The home rows are flex and always
+    //    render CATALOG_PREVIEW_SIZE = 10 items, so each tile is just row width
+    //    / 10 no matter the screen; raising the font only made the titles
+    //    outgrow their tiles and truncate. Hiding the overflow items lets flex
+    //    give the rest more room.
+    //
+    // The catalog grids are a different mechanism again -- fixed column counts
+    // per breakpoint (repeat(9,1fr) on Library, repeat(7,1fr) on Discover) --
+    // so those get a column override instead, which reflows and hides nothing.
+    //
+    // 🚨 The hide rule MUST stay scoped to board rows. Unscoped it also matches
+    // the catalog grids, where it hid 115 of 121 Library items and 426 of 432
+    // on Discover while looking fine on the home screen.
+    var UI_SCALE_CSS = [
+        'html{font-size:20px !important}',
+        '[class*="board-row"] [class*="meta-items-container"] > [class*="meta-item"]:nth-child(n+7){display:none !important}',
+        '[class*="meta-items-container"]{grid-template-columns:repeat(6,1fr) !important}',
+        // Discover's grid sits in a narrower column because of the side panel,
+        // so 6 there would be noticeably smaller than everywhere else.
+        '[class*="discover-container"] [class*="meta-items-container"]{grid-template-columns:repeat(4,1fr) !important}'
+    ].join('');
+
+    (function applyUiScale() {
+        var style = document.createElement('style');
+        style.id = 'tv-ui-scale';
+        style.textContent = UI_SCALE_CSS;
+        var attach = function() {
+            (document.head || document.documentElement).appendChild(style);
+        };
+        if (document.head) attach();
+        else document.addEventListener('DOMContentLoaded', attach);
+    })();
+
     // ── Put focus on the stream list, like the Samsung app does ─────────
     // Opening a title leaves focus wherever it was, so reaching the streams
     // meant right, right, down every single time; and picking a provider from
