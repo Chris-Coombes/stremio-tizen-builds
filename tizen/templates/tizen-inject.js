@@ -126,6 +126,44 @@
         setTimeout(promoteNavTargets, 0);
     });
 
+    // ── Put focus on the stream list, like the Samsung app does ─────────
+    // Opening a title leaves focus wherever it was, so reaching the streams
+    // meant right, right, down every single time; and picking a provider from
+    // the filter dropped focus back out to the page, so you had to do it again.
+    // Whenever the stream list's contents change, move focus to the first
+    // stream -- unless focus is already somewhere inside the list, which is
+    // what stops this fighting the user mid-scroll and stops it stealing focus
+    // out of the open filter dropdown (that dropdown renders inside the list).
+    //
+    // ponytail: polled rather than observed. The list is torn down and rebuilt
+    // on every route change, so a MutationObserver would need re-attaching each
+    // time; a 400ms poll that does nothing off the detail route is less code and
+    // self-healing. Swap to an observer only if this ever shows up in profiling.
+    var STREAMS_LIST = '[class*="streams-list"]';
+    var STREAM_ROWS = '[class*="streams-container"] > [class*="label-container"]';
+    var lastStreamsKey = null;
+
+    setInterval(function() {
+        if (location.hash.indexOf('#/detail') !== 0) { lastStreamsKey = null; return; }
+        var list = document.querySelector(STREAMS_LIST);
+        if (!list) { lastStreamsKey = null; return; }
+        var rows = list.querySelectorAll(STREAM_ROWS);
+        if (!rows.length) return;
+
+        // Addons answer one at a time, so the list is rebuilt several times
+        // after opening a title. Key on the contents so each genuine change
+        // re-focuses once, rather than every tick.
+        var key = rows.length + '|' + (rows[0].textContent || '').slice(0, 40);
+        if (key === lastStreamsKey) return;
+        lastStreamsKey = key;
+
+        if (document.activeElement && document.activeElement.closest &&
+            document.activeElement.closest(STREAMS_LIST)) return;
+
+        rows[0].setAttribute('tabindex', '0');
+        try { rows[0].focus(); } catch (ex) {}
+    }, 400);
+
     // ── Visibility change (TV sleep / wake) ─────────────────────────────
     document.addEventListener('visibilitychange', function() {
         if (document.hidden) {
