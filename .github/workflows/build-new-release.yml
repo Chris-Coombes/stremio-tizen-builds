@@ -100,7 +100,10 @@ jobs:
         if: ${{ matrix.source_build == true }}
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          # stremio-web ships lockfileVersion 9.0. pnpm 10 refuses its hls.js entry
+          # (a GitHub release tarball with no integrity field) with
+          # ERR_PNPM_MISSING_TARBALL_INTEGRITY, which breaks every source build.
+          version: 9
 
       - name: Install Needed packages
         run: sudo apt-get install -y expect
