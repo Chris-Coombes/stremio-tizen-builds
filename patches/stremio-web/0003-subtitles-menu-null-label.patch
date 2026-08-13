@@ -1,0 +1,20 @@
+diff --git a/src/routes/Player/SubtitlesMenu/SubtitlesMenu.js b/src/routes/Player/SubtitlesMenu/SubtitlesMenu.js
+index fe690d0..946194e 100644
+--- a/src/routes/Player/SubtitlesMenu/SubtitlesMenu.js
++++ b/src/routes/Player/SubtitlesMenu/SubtitlesMenu.js
+@@ -179,7 +179,14 @@ const SubtitlesMenu = React.memo((props) => {
+                                     <div className={styles['info']}>
+                                         <div className={styles['variant-label']}>
+                                             {
+-                                                languages.label(!track.label.startsWith('http') ? track.label : track.lang)
++                                                // Embedded tracks carry no label -- propTypes only requires one on
++                                                // extraSubtitlesTracks -- and on a TV they are the common case: AVPlay
++                                                // reports every text track in an MKV with no label and an empty
++                                                // track_lang. Calling startsWith on that null threw during render, so
++                                                // opening the subtitles menu unmounted the whole app. With the video on
++                                                // AVPlay's hardware overlay the picture keeps playing underneath, so it
++                                                // looks like the button simply does nothing rather than like a crash.
++                                                languages.label(typeof track.label === 'string' && !track.label.startsWith('http') ? track.label : track.lang)
+                                             }
+                                         </div>
+                                         <div className={styles['variant-origin']}>

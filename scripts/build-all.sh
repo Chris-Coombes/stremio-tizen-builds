@@ -88,7 +88,10 @@ build_stremio_web() {
         for patch in "$PATCHES_DIR/stremio-web"/*.patch; do
             [[ -f "$patch" ]] || continue
             log "Applying patch: $(basename "$patch")"
-            git apply "$patch" || warn "Patch failed: $(basename "$patch")"
+            # Fail hard. A patch that no longer applies against a bumped
+            # stremio-web silently ships a .wgt missing that fix, and on the
+            # device that is indistinguishable from the fix not working.
+            git apply "$patch" || { err "Patch failed: $(basename "$patch")"; return 1; }
         done
     fi
 

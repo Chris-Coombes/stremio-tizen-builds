@@ -272,7 +272,28 @@
     // and the account menu. The account menu is worse -- it sits at z-index 1
     // over the catalog, so tiles behind it stay perfectly good navigation
     // candidates and it could be opened but never entered or dismissed.
-    var OVERLAY_SEL = '[class*="multiselect-menu"] [class*="dropdown"], [class*="menu-container"]';
+    //
+    // "menu-layer" is the class every player menu carries -- subtitles, audio,
+    // speed, statistics, options -- and it is the ONLY class in the built
+    // stylesheet containing that string, so one pattern reaches all of them.
+    // Worth having on its own account: the audio menu's root class is
+    // "audio-menu", which nothing here matched, so audio track selection had
+    // the same problem as subtitles.
+    //
+    // 🚨 The :not() is load-bearing, and this is the FOURTH time this substring
+    // trap has bitten. The control bar wraps its buttons in
+    // "control-bar-buttonS-menu-container", which contains "menu-container",
+    // is rendered at TV widths (the display:none is inside a phone-width media
+    // query), and comes before every real menu in document order. So in the
+    // player openOverlay() always returned the control bar itself: the handler
+    // below captured every up/down press and cycled focus around the control
+    // bar buttons, and no menu could ever be entered. That is exactly why the
+    // subtitles button could be selected but the menu it opened could not be
+    // reached.
+    var MENU_LAYER = '[class*="menu-layer"]';
+    var OVERLAY_SEL = '[class*="multiselect-menu"] [class*="dropdown"],' +
+        '[class*="menu-container"]:not([class*="control-bar"]),' +
+        MENU_LAYER;
 
     function openOverlay() {
         var els = document.querySelectorAll(OVERLAY_SEL);
@@ -293,7 +314,36 @@
         });
     }
 
+    // Remembered so that closing a player menu can put focus back where it came
+    // from. The menu is unmounted on close, which detaches whatever was focused
+    // inside it; focus then falls to BODY and the next arrow press goes
+    // somewhere arbitrary, which reads as the remote having died.
+    var lastControlBarButton = null;
+    document.addEventListener('keydown', function() {
+        var el = document.activeElement;
+        if (el && el.closest && el.closest('[class*="control-bar-button"]')) {
+            lastControlBarButton = el;
+        }
+    }, true);
+
     function closeOverlay(overlay) {
+        // Player menus have no dismiss control of their own -- they close when
+        // a mousedown lands anywhere on the player container, and with a remote
+        // no mousedown ever happens, so once open they were permanent. Dispatch
+        // one. The menus set their *ClosePrevented flags on their own mousedown
+        // handlers only, so one on the container closes the lot.
+        //
+        // NextVideoPopup carries menu-layer too and is NOT closed this way; back
+        // is a no-op while it is up. It dismisses itself, so leave it.
+        if (overlay.matches && overlay.matches(MENU_LAYER)) {
+            var player = document.querySelector('[class*="player-container"]');
+            if (!player) return false;
+            player.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            if (lastControlBarButton) {
+                try { lastControlBarButton.focus(); } catch (ex) {}
+            }
+            return true;
+        }
         var multiselect = overlay.closest('[class*="multiselect-menu"]');
         if (multiselect) {
             var button = multiselect.querySelector('[class*="multiselect-button"]');
@@ -535,6 +585,39 @@
         rows[0].setAttribute('tabindex', '0');
         try { rows[0].focus(); } catch (ex) {}
     }, 400);
+
+    // ── Get into the player's control bar ───────────────────────────────
+    // While something is playing, focus sits on AVPlay's plugin element --
+    // <object type="application/avplayer">, no tabindex, the size of the screen
+    // -- and WebKit's spatial navigation will not move off it, so no arrow press
+    // ever reached the control bar.
+    //
+    // This used to work by accident: "control-bar-buttonS-menu-container"
+    // matched the overlay selector, so the overlay handler captured every
+    // up/down and drove the control bar buttons directly. That accident is
+    // exactly what made the menus unreachable, so removing it also removed the
+    // only way in -- seed focus deliberately instead. From the first button,
+    // native spatial navigation handles the rest of the bar.
+    //
+    // Guarded on "focus has no focusable ancestor", not on "focus is outside the
+    // control bar": the top nav bar and the seek bar are legitimate places to
+    // be, and yanking focus back to the control bar on every press there would
+    // make them unusable.
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode < 37 || e.keyCode > 40) return;
+        if (location.hash.indexOf('#/player') !== 0) return;
+        if (openOverlay()) return;          // a menu is open; its handler owns this
+        var active = document.activeElement;
+        if (active && active.closest && active.closest('[tabindex="0"]')) return;
+        promoteNavTargets();
+        var first = document.querySelector(
+            '[class*="control-bar-button"]:not([class*="control-bar-buttons"])');
+        if (!first) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        first.setAttribute('tabindex', '0');
+        try { first.focus(); } catch (ex) {}
+    }, true);
 
     // ── Visibility change (TV sleep / wake) ─────────────────────────────
     document.addEventListener('visibilitychange', function() {
