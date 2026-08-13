@@ -2,7 +2,7 @@ diff --git a/src/App/App.js b/src/App/App.js
 index 7a1383d..bccd7a3 100644
 --- a/src/App/App.js
 +++ b/src/App/App.js
-@@ -185,9 +185,39 @@ const App = () => {
+@@ -185,9 +185,44 @@
                  }
              });
          };
@@ -14,6 +14,11 @@ index 7a1383d..bccd7a3 100644
 +        // case of leaving the app open indefinitely.
 +        // Deliberately NOT calling onWindowFocus() on the interval - that also
 +        // dispatches PullNotifications, which issues requests to every addon.
++        // 10s, because this is the whole latency between adding a title on the
++        // phone and seeing it on the TV. A no-change sync is one datastoreMeta
++        // POST - measured 6.3 KB and ~200ms against this account's 211 items -
++        // so 6/min is far less traffic than the desktop app generates by
++        // alt-tabbing, which fires this plus PullNotifications on every focus.
 +        const syncLibraryOnly = () => {
 +            console.log('[tv-library-sync] SyncLibraryWithAPI');
 +            services.core.transport.dispatch({
@@ -38,11 +43,11 @@ index 7a1383d..bccd7a3 100644
 +                if (document.visibilityState !== 'hidden') {
 +                    syncLibraryOnly();
 +                }
-+            }, 120000);
++            }, 10000);
              services.core.transport.on('CoreEvent', onCoreEvent);
              services.core.transport
                  .getState('ctx')
-@@ -195,6 +225,10 @@ const App = () => {
+@@ -195,6 +230,10 @@
                  .catch(console.error);
          }
          return () => {
