@@ -454,6 +454,7 @@
     // while they were part-way into the sidebar waiting for catalogs to load.
     document.addEventListener('keydown', function() {
         focusResultsUntil = 0;
+        focusStreamsUntil = 0;
     }, true);
 
     // Switching section from the sidebar has the same problem as filtering:
@@ -522,8 +523,16 @@
         // Only a filter closing should send focus to the results. Closing the
         // account menu shouldn't yank you off to the first tile.
         var isFilter = isOpen && !!overlay.closest('[class*="multiselect-menu"]');
+        // A title page has neither tiles nor addon rows, so firstResult() falls
+        // all the way through to "first focusable in the content area" and lands
+        // on the IMDb button in the meta preview. Measured on device: picking a
+        // provider put focus on the first stream at 250ms and this dragged it
+        // out to imdb-button-container at 500ms, where it stayed -- which is
+        // exactly the "it doesn't go back to the streams" complaint. The stream
+        // list has its own focus rule, so hand the detail route to that.
         if (dropdownWasOpen && !isOpen) {
-            armResultsFocus();
+            if (location.hash.indexOf('#/detail') === 0) armStreamsFocus();
+            else armResultsFocus();
         }
         dropdownWasOpen = isFilter;
 
@@ -564,6 +573,15 @@
     var STREAMS_LIST = '[class*="streams-list"]';
     var STREAM_ROWS = '[class*="streams-container"] > [class*="label-container"]';
     var lastStreamsKey = null;
+    var focusStreamsUntil = 0;
+
+    // Picking a provider re-renders the list right after the click, so this has
+    // to keep trying for a bit rather than fire once on the close -- the same
+    // lesson the catalog focus above learned the hard way.
+    function armStreamsFocus() {
+        focusStreamsUntil = Date.now() + FOCUS_RESULTS_WINDOW_MS;
+        lastStreamsKey = null;
+    }
 
     setInterval(function() {
         if (location.hash.indexOf('#/detail') !== 0) { lastStreamsKey = null; return; }
@@ -572,15 +590,29 @@
         var rows = list.querySelectorAll(STREAM_ROWS);
         if (!rows.length) return;
 
+        var armed = !!focusStreamsUntil && Date.now() <= focusStreamsUntil;
+        if (focusStreamsUntil && !armed) focusStreamsUntil = 0;
+
         // Addons answer one at a time, so the list is rebuilt several times
         // after opening a title. Key on the contents so each genuine change
         // re-focuses once, rather than every tick.
         var key = rows.length + '|' + (rows[0].textContent || '').slice(0, 40);
-        if (key === lastStreamsKey) return;
+        if (!armed && key === lastStreamsKey) return;
         lastStreamsKey = key;
 
-        if (document.activeElement && document.activeElement.closest &&
-            document.activeElement.closest(STREAMS_LIST)) return;
+        // Never steal from an open filter dropdown -- it renders INSIDE the
+        // stream list -- and leave the user alone once they are on a row.
+        //
+        // Testing for a ROW rather than for the list as a whole is the point of
+        // this pair: the filter button is inside the list too, so a list-wide
+        // test reads "focus went back to the filter" as already-there and the
+        // streams never get it.
+        if (openOverlay()) return;
+        var active = document.activeElement;
+        if (active && active.closest && active.closest(STREAM_ROWS)) {
+            if (armed) focusStreamsUntil = 0;      // it stuck
+            return;
+        }
 
         rows[0].setAttribute('tabindex', '0');
         try { rows[0].focus(); } catch (ex) {}
