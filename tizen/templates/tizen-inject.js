@@ -397,6 +397,15 @@
         if (e.keyCode !== 40) return;
         var field = document.activeElement;
         if (!field || (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA')) return;
+        // ONLY the search bar. This used to fire in every text field on every
+        // page, and firstResult()'s content-area fallback (first [tabindex="0"]
+        // with x > 100 and y > 100) then matched the focused field ITSELF -- so
+        // Down in the login form re-focused the e-mail box and the password
+        // field below it could not be reached with the remote at all. Same trap
+        // waited in Settings, where every text field has another one under it.
+        // Test the input's OWN class, not an ancestor's: that keeps this clear
+        // of the [class*=] nesting trap, which has bitten four times here.
+        if (!field.matches('[class*="search-input"]')) return;
         var first = firstResult();
         if (!first) return;
         e.preventDefault();
