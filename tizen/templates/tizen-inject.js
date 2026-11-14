@@ -644,18 +644,37 @@
     // control bar": the top nav bar and the seek bar are legitimate places to
     // be, and yanking focus back to the control bar on every press there would
     // make them unusable.
+    //
+    // The bar also has to be made VISIBLE. While a film plays stremio-web hides
+    // it, and the top bar, at opacity 0 (the player-container gets
+    // "overlayHidden"), and the only thing that clears that is a mousemove on
+    // the container, which hides it again 3 s after the last one. A remote
+    // never moves a mouse, so the controls stayed invisible: OK did nothing you
+    // could see, and arrows moved focus between buttons you could not see.
+    // Every key in the player now counts as a mousemove, and while the bar is
+    // hidden the first OK or arrow press only shows it, as on any TV player,
+    // so it cannot pause or seek blind.
     document.addEventListener('keydown', function(e) {
-        if (e.keyCode < 37 || e.keyCode > 40) return;
         if (location.hash.indexOf('#/player') !== 0) return;
+        var player = document.querySelector('[class*="player-container"]');
+        var wasHidden = !!player && /overlayHidden/.test(player.className);
+        if (player) player.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+        var k = e.keyCode;
+        if (k !== 13 && (k < 37 || k > 40)) return;
         if (openOverlay()) return;          // a menu is open; its handler owns this
         var active = document.activeElement;
-        if (active && active.closest && active.closest('[tabindex="0"]')) return;
-        promoteNavTargets();
-        var first = document.querySelector(
-            '[class*="control-bar-button"]:not([class*="control-bar-buttons"])');
-        if (!first) return;
+        var inBar = !!(active && active.closest && active.closest('[tabindex="0"]'));
+        if (inBar && !wasHidden) return;
+        var first = null;
+        if (!inBar) {
+            promoteNavTargets();
+            first = document.querySelector(
+                '[class*="control-bar-button"]:not([class*="control-bar-buttons"])');
+            if (!first && !wasHidden) return;
+        }
         e.preventDefault();
         e.stopImmediatePropagation();
+        if (!first) return;                 // just shown; focus stays where it was
         first.setAttribute('tabindex', '0');
         try { first.focus(); } catch (ex) {}
     }, true);
