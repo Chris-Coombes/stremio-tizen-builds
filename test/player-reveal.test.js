@@ -94,7 +94,8 @@ const sandbox = {
 vm.runInNewContext(src, sandbox);
 
 function press(keyCode) {
-    const e = { keyCode, defaultPrevented: false, stopped: false,
+    const code = { 13: 'Enter', 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight', 40: 'ArrowDown' }[keyCode];
+    const e = { keyCode, code, defaultPrevented: false, stopped: false,
         preventDefault() { this.defaultPrevented = true; },
         stopImmediatePropagation() { this.stopped = true; } };
     for (const fn of listeners) { fn(e); if (e.stopped) break; }
@@ -127,6 +128,12 @@ assert.ok(!e.defaultPrevented, 'OK on a visible button must press it');
 assert.ok(player.events.includes('mousemove'), 'every press must reset the 3 s auto-hide');
 e = press(39);
 assert.ok(!e.defaultPrevented, 'arrows on a visible bar must reach spatial navigation');
+assert.strictEqual(e.code, '', 'stremio-web seeks on event.code ArrowRight; it must not see it');
+assert.strictEqual(e.keyCode, 39, 'the polyfill navigates on keyCode, which must survive');
+e = press(38);
+assert.strictEqual(e.code, '', 'ArrowUp is the volume shortcut; hide it too');
+e = press(13);
+assert.strictEqual(e.code, 'Enter', 'OK is not a shortcut and must reach the button untouched');
 
 // 4. Off the player route nothing happens.
 build(true);

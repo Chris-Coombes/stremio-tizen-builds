@@ -664,7 +664,15 @@
         if (openOverlay()) return;          // a menu is open; its handler owns this
         var active = document.activeElement;
         var inBar = !!(active && active.closest && active.closest('[tabindex="0"]'));
-        if (inBar && !wasHidden) return;
+        if (inBar && !wasHidden) {
+            // stremio-web's player shortcuts bind ArrowLeft/Right to seek and
+            // ArrowUp/Down to volume, matched on event.code at bubble phase, so
+            // walking along the bar also jumped the film 10 s per press. The
+            // spatial-navigation polyfill reads only keyCode, so hiding code
+            // from the shortcuts leaves navigation intact.
+            if (k !== 13) Object.defineProperty(e, 'code', { value: '' });
+            return;
+        }
         var first = null;
         if (!inBar) {
             promoteNavTargets();
