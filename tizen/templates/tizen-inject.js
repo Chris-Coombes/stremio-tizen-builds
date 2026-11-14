@@ -651,9 +651,16 @@
     // the container, which hides it again 3 s after the last one. A remote
     // never moves a mouse, so the controls stayed invisible: OK did nothing you
     // could see, and arrows moved focus between buttons you could not see.
-    // Every key in the player now counts as a mousemove, and while the bar is
-    // hidden the first OK or arrow press only shows it, as on any TV player,
-    // so it cannot pause or seek blind.
+    // Every key in the player now counts as a mousemove.
+    //
+    // The remote has no seek buttons, so Left/Right have two jobs, the way a
+    // TV player does it: until you start using the controls they seek (that is
+    // stremio-web's own ArrowLeft/Right shortcut, 10 s), and once OK, Up or
+    // Down has put you on the bar they move between buttons. Letting the bar
+    // auto-hide puts you back to seeking. barEngaged tracks which job applies.
+    var barEngaged = false;
+    window.addEventListener('hashchange', function() { barEngaged = false; });
+
     document.addEventListener('keydown', function(e) {
         if (location.hash.indexOf('#/player') !== 0) return;
         var player = document.querySelector('[class*="player-container"]');
@@ -662,9 +669,10 @@
         var k = e.keyCode;
         if (k !== 13 && (k < 37 || k > 40)) return;
         if (openOverlay()) return;          // a menu is open; its handler owns this
+        if (wasHidden) barEngaged = false;
         var active = document.activeElement;
         var inBar = !!(active && active.closest && active.closest('[tabindex="0"]'));
-        if (inBar && !wasHidden) {
+        if (barEngaged && inBar) {
             // stremio-web's player shortcuts bind ArrowLeft/Right to seek and
             // ArrowUp/Down to volume, matched on event.code at bubble phase, so
             // walking along the bar also jumped the film 10 s per press. The
@@ -673,16 +681,22 @@
             if (k !== 13) Object.defineProperty(e, 'code', { value: '' });
             return;
         }
-        var first = null;
-        if (!inBar) {
-            promoteNavTargets();
-            first = document.querySelector(
-                '[class*="control-bar-button"]:not([class*="control-bar-buttons"])');
-            if (!first && !wasHidden) return;
+        if (!barEngaged && (k === 37 || k === 39)) {
+            // Seek. preventDefault keeps the polyfill from also moving focus;
+            // the shortcut handler does not check defaultPrevented, so it runs.
+            e.preventDefault();
+            return;
         }
+        // OK, Up or Down while not on the bar: show it with play/pause
+        // selected and swallow the press, so nothing is pressed blind and Up/
+        // Down do not change the volume.
+        promoteNavTargets();
+        var first = document.querySelector(
+            '[class*="control-bar-button"]:not([class*="control-bar-buttons"])');
         e.preventDefault();
         e.stopImmediatePropagation();
-        if (!first) return;                 // just shown; focus stays where it was
+        if (!first) return;
+        barEngaged = true;
         first.setAttribute('tabindex', '0');
         try { first.focus(); } catch (ex) {}
     }, true);

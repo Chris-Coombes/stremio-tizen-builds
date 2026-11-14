@@ -102,40 +102,59 @@ function press(keyCode) {
     return e;
 }
 
-// 1. Hidden bar, focus on the video: OK shows the bar and lands on play/pause,
-//    and is swallowed so it cannot also pause the film.
-let e = press(13);
-assert.ok(player.events.includes('mousemove'), 'OK must count as a mousemove so stremio-web shows the bar');
-assert.strictEqual(doc.activeElement, pause, 'OK on a hidden bar must focus play/pause');
-assert.ok(e.defaultPrevented, 'the revealing OK must not also activate anything');
+// A seek is stremio-web's own ArrowLeft/Right shortcut, which runs at bubble
+// phase on document and reads event.code. So "it seeks" means: not stopped,
+// code intact; and defaultPrevented, so the navigation polyfill stays put.
+const seeks = (e) => !e.stopped && /^Arrow(Left|Right)$/.test(e.code) && e.defaultPrevented;
 
-// 2. Hidden bar, focus already on a button: the press only reveals.
+// 1. Hidden bar: Left/Right seek (the remote has no seek buttons) and show
+//    the bar for feedback, without moving focus.
+let e = press(39);
+assert.ok(seeks(e), 'Right on a hidden bar must seek');
+assert.ok(player.events.includes('mousemove'), 'a seek must show the bar so the new position is visible');
+assert.notStrictEqual(doc.activeElement, pause, 'a seek must not put focus on the bar');
+e = press(37);
+assert.ok(seeks(e), 'Left must seek back');
+
+// 2. Still not on the bar (it is visible now because of the seek): Right
+//    keeps seeking, so repeated presses go on skipping.
+player.className = 'player-container-wIELK';
+e = press(39);
+assert.ok(seeks(e), 'Right must keep seeking until the user engages the bar');
+
+// 3. OK engages: shows the bar with play/pause selected, swallowed so it
+//    cannot also pause the film.
 build(true);
 doc.activeElement = subs; subs.setAttribute('tabindex', '0');
 e = press(13);
-assert.ok(player.events.includes('mousemove'));
-assert.ok(e.defaultPrevented, 'OK on an invisible button must not press it blind');
-assert.strictEqual(doc.activeElement, subs, 'focus must stay on the button you were on');
-e = press(39);
-assert.ok(e.defaultPrevented, 'an arrow on a hidden bar must not move focus blind either');
+assert.ok(e.defaultPrevented && e.stopped, 'OK on an unengaged bar must not press anything blind');
+assert.strictEqual(doc.activeElement, pause, 'OK must land on play/pause');
 
-// 3. Visible bar, focus on a button: keys pass straight through (native
-//    navigation and Enter-to-click), but still keep the bar awake.
-build(false);
-doc.activeElement = pause; pause.setAttribute('tabindex', '0');
-e = press(13);
-assert.ok(!e.defaultPrevented, 'OK on a visible button must press it');
-assert.ok(player.events.includes('mousemove'), 'every press must reset the 3 s auto-hide');
+// 4. Engaged and visible: keys pass straight through (native navigation and
+//    Enter-to-click), with the seek and volume shortcuts hidden.
+player.className = 'player-container-wIELK';
 e = press(39);
-assert.ok(!e.defaultPrevented, 'arrows on a visible bar must reach spatial navigation');
+assert.ok(!e.defaultPrevented && !e.stopped, 'arrows on the bar must reach spatial navigation');
 assert.strictEqual(e.code, '', 'stremio-web seeks on event.code ArrowRight; it must not see it');
 assert.strictEqual(e.keyCode, 39, 'the polyfill navigates on keyCode, which must survive');
 e = press(38);
 assert.strictEqual(e.code, '', 'ArrowUp is the volume shortcut; hide it too');
 e = press(13);
+assert.ok(!e.defaultPrevented, 'OK on an engaged button must press it');
 assert.strictEqual(e.code, 'Enter', 'OK is not a shortcut and must reach the button untouched');
 
-// 4. Off the player route nothing happens.
+// 5. Once the bar has auto-hidden, Left/Right seek again.
+player.className += ' overlayHidden-gyjIy';
+e = press(39);
+assert.ok(seeks(e), 'after auto-hide Right must seek, not navigate blind');
+
+// 6. Up/Down while not engaged: engage, never change the volume.
+build(true);
+e = press(40);
+assert.ok(e.stopped, 'Down must not reach the volume shortcut');
+assert.strictEqual(doc.activeElement, pause, 'Down must put you on the bar');
+
+// 7. Off the player route nothing happens.
 build(true);
 sandbox.location.hash = '#/';
 e = press(13);
